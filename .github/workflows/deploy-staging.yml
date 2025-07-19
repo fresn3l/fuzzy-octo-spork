@@ -8,52 +8,56 @@ env:
   IMAGE_REGISTRY_URL: ghcr.io
   DOCKER_IMAGE_NAME: fresn3l-azure-ttt
   AZURE_WEBAPP_NAME: fresn3l-ttt-app
+  RESOURCE_GROUP: fresn3l-azure-ttt-rg
 
 jobs:
- create-azure-environment:
-  if: contains(github.event.pull_request.labels.*.name, 'stage')
-  runs-on: ubuntu-latest
-  steps:
-    - name: "Login via Azure CLI"
-      uses: azure/login@v2
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-    - name: Check if Resource Group Exists
-      id: check-rg
-      run: |
-        if az group exists --name fresn3l-azure-ttt-rg; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-    - name: Create Resource Group
-      if: steps.check-rg.outputs.exists == 'false'
-      run: az group create --name fresn3l-azure-ttt-rg --location westus
-      continue-on-error: true
-    - name: Check if App Service Plan Exists
-      id: check-plan
-      run: |
-        if az appservice plan show --name fresn3l-ttt-plan --resource-group fresn3l-azure-ttt-rg --output tsv 2>/dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-    - name: Create App Service Plan
-      if: steps.check-plan.outputs.exists == 'false'
-      run: az appservice plan create --name fresn3l-ttt-plan --resource-group fresn3l-azure-ttt-rg --sku B1 --is-linux
-      continue-on-error: true
-    - name: Check if Web App Exists
-      id: check-webapp
-      run: |
-        if az webapp show --name ${{env.AZURE_WEBAPP_NAME}} --resource-group fresn3l-azure-ttt-rg --output tsv 2>/dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-    - name: Create Web App
-      if: steps.check-webapp.outputs.exists == 'false'
-      run: az webapp create --name ${{env.AZURE_WEBAPP_NAME}} --resource-group fresn3l-azure-ttt-rg --plan fresn3l-ttt-plan --deployment-container-image-name ${{env.IMAGE_REGISTRY_URL}}/${{ github.repository }}/${{env.DOCKER_IMAGE_NAME}}:latest
-      continue-on-error: true
+  create-azure-environment:
+    if: contains(github.event.pull_request.labels.*.name, 'stage')
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Login via Azure CLI"
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Check if Resource Group Exists
+        id: check-rg
+        run: |
+          if az group exists --name ${{ env.RESOURCE_GROUP }}; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create Resource Group
+        if: steps.check-rg.outputs.exists == 'false'
+        run: az group create --name ${{ env.RESOURCE_GROUP }} --location westus
+      - name: Check if App Service Plan Exists
+        id: check-plan
+        run: |
+          if az appservice plan show --name fresn3l-ttt-plan --resource-group ${{ env.RESOURCE_GROUP }} --output tsv 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create App Service Plan
+        if: steps.check-plan.outputs.exists == 'false'
+        run: az appservice plan create --name fresn3l-ttt-plan --resource-group ${{ env.RESOURCE_GROUP }} --sku B1 --is-linux
+      - name: Check if Web App Exists
+        id: check-webapp
+        run: |
+          if az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --output tsv 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create or Update Web App
+        if: steps.check-webapp.outputs.exists == 'false'
+        run: |
+          az webapp create --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --plan fresn3l-ttt-plan --runtime "NODE|18-lts"
+      - name: Configure Container Settings
+        if: steps.check-webapp.outputs.exists == 'false' || always()
+        run: |
+          az webapp config container set --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --docker-custom-image-name ${{ env.IMAGE_REGISTRY_URL }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:latest --docker-registry-server-url https://${{ env.IMAGE_REGISTRY_URL }} --docker-registry-server-user ${{ github.actor }} --docker-registry-server-password ${{ secrets.CR_PAT }}
+
   build:
     if: contains(github.event.pull_request.labels.*.name, 'stage')
     runs-on: ubuntu-latest
@@ -120,7 +124,7 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{env.AZURE_WEBAPP_NAME}}
-          resource-group-name: 'fresn3l-azure-ttt-rg'
+          resource-group-name: ${{ env.RESOURCE_GROUP }}
           images: ${{env.IMAGE_REGISTRY_URL}}/${{ github.repository }}/${{env.DOCKER_IMAGE_NAME}}:${{ github.sha }}
           slot-name: 'production'
       - name: Azure logout via Azure CLI
