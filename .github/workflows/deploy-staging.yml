@@ -58,7 +58,7 @@ jobs:
       - name: Configure Container Settings
         if: steps.check-webapp.outputs.exists == 'false' || always()
         run: |
-          az webapp config container set --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --docker-custom-image-name ${{ env.IMAGE_REGISTRY_URL }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:latest --docker-registry-server-url https://${{ env.IMAGE_REGISTRY_URL }} --docker-registry-server-user ${{ github.actor }} --docker-registry-server-password ${{ secrets.CR_PAT }}
+          az webapp config container set --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --docker-custom-image-name ${{ env.IMAGE_REGISTRY_URL }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_NAME }}:latest --docker-registry-server-url https://${{ env.IMAGE_REGISTRY_URL }} --docker-registry-server-user ${{ github.actor }} --docker-registry-server-password ${{ secrets.CR_PAT }} --enable-app-service-storage false
 
   build:
     if: contains(github.event.pull_request.labels.*.name, 'stage')
@@ -70,6 +70,10 @@ jobs:
           node-version: 18
       - name: Install dependencies
         run: npm install serve
+      - name: Build and copy files
+        run: |
+          mkdir -p public
+          cp -r public/* public/ || true  # Ensure public directory is populated
       - uses: actions/upload-artifact@v4
         with:
           name: webpack artifacts
@@ -129,6 +133,8 @@ jobs:
           resource-group-name: ${{ env.RESOURCE_GROUP }}
           images: ${{env.IMAGE_REGISTRY_URL}}/${{ github.repository }}/${{env.DOCKER_IMAGE_NAME}}:${{ github.sha }}
           slot-name: 'production'
+      - name: Configure Web App Ports
+        run: az webapp config appsettings set --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --settings WEBSITES_PORT=8080
       - name: Azure logout via Azure CLI
         uses: azure/CLI@v2
         with:
