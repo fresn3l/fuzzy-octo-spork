@@ -49,10 +49,12 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
-      - name: Create or Update Web App
-        if: steps.check-webapp.outputs.exists == 'false'
-        run: |
-          az webapp create --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --plan fresn3l-ttt-plan --runtime "NODE|18-lts"
+      - name: Delete Existing Web App (if exists)
+        if: steps.check-webapp.outputs.exists == 'true'
+        run: az webapp delete --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --yes
+      - name: Create Web App
+        if: steps.check-webapp.outputs.exists == 'false' || always()
+        run: az webapp create --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --plan fresn3l-ttt-plan --runtime "NODE|20-lts"  # Adjust runtime based on az webapp list-runtimes --os-type linux
       - name: Configure Container Settings
         if: steps.check-webapp.outputs.exists == 'false' || always()
         run: |
